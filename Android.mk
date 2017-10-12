@@ -8,6 +8,10 @@ LOCAL_SRC_FILES := \
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/libcap-ng-0.7/src
 LOCAL_MODULE := libcap-ng
+LOCAL_CFLAGS := \
+    -Wall -Werror \
+    -Wno-enum-conversion \
+    -Wno-unused-parameter
 include $(BUILD_SHARED_LIBRARY)
 
 ######################
@@ -17,7 +21,5 @@ LOCAL_SRC_FILES := libcap-ng-0.7/utils/pscap.c
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/libcap-ng-0.7/src
 LOCAL_SHARED_LIBRARIES += libcap-ng
 LOCAL_MODULE := pscap
+LOCAL_CFLAGS := -Wall -Werror
 include $(BUILD_EXECUTABLE)
-
-
-
