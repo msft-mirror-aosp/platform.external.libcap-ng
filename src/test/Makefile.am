@@ -1,5 +1,5 @@
 # Makefile.am --
-# Copyright 2009,10 Red Hat Inc., Durham, North Carolina.
+# Copyright 2009,10,15 Red Hat Inc.
 # All Rights Reserved.
 #
 # This library is free software; you can redistribute it and/or
@@ -12,15 +12,16 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 # Lesser General Public License for more details.
 #
-# You should have received a copy of the GNU Lesser General Public
-# License along with this library; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; see the file COPYING.LIB. If not, write to the
+# Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
+# Boston, MA 02110-1335, USA.
 #
 # Authors:
 #   Steve Grubb <sgrubb@redhat.com>
 #
 
-INCLUDES = -I${top_srcdir} -I${top_srcdir}/src
+AM_CPPFLAGS = -I${top_srcdir} -I${top_srcdir}/src
 check_PROGRAMS = lib_test thread_test
 TESTS = $(check_PROGRAMS)
 

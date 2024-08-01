@@ -1,6 +1,6 @@
 /*
 * proc-llist.h
-* Copyright (c) 2009 Red Hat Inc., Durham, North Carolina.
+* Copyright (c) 2009, 2020 Red Hat Inc.
 * All Rights Reserved.
 *
 * This software may be freely redistributed and/or modified under the
@@ -15,7 +15,8 @@
 *
 * You should have received a copy of the GNU General Public License
 * along with this program; see the file COPYING. If not, write to the
-* Free Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+* Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
+* Boston, MA 02110-1335, USA.
 *
 * Authors:
 *   Steve Grubb <sgrubb@redhat.com>
@@ -25,6 +26,7 @@
 #define PROC_HEADER
 
 #include "config.h"
+#include <sys/types.h>	/* Ensure types in _lnode are defined on all systems */
 
 
 /* This is the node of the linked list. Any data elements that are per
@@ -37,6 +39,7 @@ typedef struct _lnode{
   unsigned long inode;	// inode of socket
   char *capabilities;	// Text of partial capabilities
   char *bounds;		// Text for bounding set
+  char *ambient;	// Text for ambient set
   struct _lnode* next;	// Next node pointer
 } lnode;
 

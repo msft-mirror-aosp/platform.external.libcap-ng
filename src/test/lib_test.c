@@ -1,5 +1,5 @@
 /* lib_test.c -- simple libcap-ng test suite
- * Copyright 2009,2012 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2009,2012-13 Red Hat Inc.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -12,9 +12,10 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program; see the file COPYING.LIB. If not, write to the
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
+ * Boston, MA 02110-1335, USA.
  *
  * Authors:
  *      Steve Grubb <sgrubb@redhat.com>
@@ -25,11 +26,35 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
+static unsigned int get_last_cap(void)
+{
+	int fd;
+
+	fd = open("/proc/sys/kernel/cap_last_cap", O_RDONLY);
+	if (fd == -1) {
+		return CAP_LAST_CAP;
+	} else {
+		char buf[8];
+		int num = read(fd, buf, sizeof(buf));
+		if (num > 0) {
+			errno = 0;
+			unsigned int val = strtoul(buf, NULL, 10);
+			if (errno == 0)
+				return val;
+		}
+		close(fd);
+	}
+	return CAP_LAST_CAP;
+}
 
 int main(void)
 {
-	int rc, i, len, last = CAP_LAST_CAP;
+	int rc;
+	unsigned int i, len, last = get_last_cap();
 	char *text;
 	void *saved;
 
@@ -105,7 +130,7 @@ int main(void)
 			abort();
 		}
 		name = capng_capability_to_name(i);
-		if (name == NULL) { 
+		if (name == NULL) {
 			printf("Failed converting capability %d to name\n", i);
 			abort();
 		}

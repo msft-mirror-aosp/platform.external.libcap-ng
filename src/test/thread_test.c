@@ -31,7 +31,10 @@ void *thread2_main(void *arg)
 #ifdef DEBUG
 	printf("thread2 getting capabilities\n");
 #endif
-	capng_get_caps_process();
+	if (capng_get_caps_process()) {
+		printf("Unable to get process capabilities");
+		exit(1);
+	}
 	if (capng_have_capabilities(CAPNG_SELECT_CAPS) != CAPNG_NONE) {
 		printf("Detected capabilities when there should not be any\n");
 		exit(1);
@@ -45,6 +48,15 @@ void *thread2_main(void *arg)
 
 int main(void)
 {
+	// This test must be run as root which naturally has all capabilities
+	// set. So, we need to clear the capabilities so that we can see if
+	// the test works.
+	capng_clear(CAPNG_SELECT_CAPS);
+	if (capng_apply(CAPNG_SELECT_CAPS)) {
+		printf("Clearing capabilities failed");
+		return 1;
+	}
+
 	printf("Testing thread separation of capabilities\n");
 	pthread_create(&thread1, NULL, thread1_main, NULL);
 	pthread_create(&thread2, NULL, thread2_main, NULL);

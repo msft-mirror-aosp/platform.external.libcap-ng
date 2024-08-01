@@ -1,5 +1,5 @@
 # Makefile.am --
-# Copyright 2009 Red Hat Inc., Durham, North Carolina.
+# Copyright 2015 Red Hat Inc., Durham, North Carolina.
 # All Rights Reserved.
 #
 # This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 #   Steve Grubb <sgrubb@redhat.com>
 #
 
-dist_check_SCRIPTS = capng-test.py
-TESTS = $(dist_check_SCRIPTS)
-TESTS_ENVIRONMENT = PYTHONPATH=${top_builddir}/bindings/python/:${top_builddir}/bindings/python/.libs
-
+EXTRA_DIST = capng_swig.i
+SWIG_SOURCES = capng_swig.i
+CONFIG_CLEAN_FILES = *.loT *.rej *.orig

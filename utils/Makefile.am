@@ -1,5 +1,5 @@
 # Makefile.am --
-# Copyright 2009 Red Hat Inc., Durham, North Carolina.
+# Copyright 2009,2015 Red Hat Inc.
 # All Rights Reserved.
 #
 # This library is free software; you can redistribute it and/or
@@ -12,9 +12,10 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 # Lesser General Public License for more details.
 #
-# You should have received a copy of the GNU Lesser General Public
-# License along with this library; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; see the file COPYING. If not, write to the
+# Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
+# Boston, MA 02110-1335, USA.
 #
 # Authors:
 #   Steve Grubb <sgrubb@redhat.com>
@@ -23,9 +24,9 @@
 CONFIG_CLEAN_FILES = *.loT *.rej *.orig
 AUTOMAKE_OPTIONS = no-dependencies
 EXTRA_DIST = $(man_MANS)
-INCLUDES = -I${top_srcdir} -I${top_srcdir}/src
-LIBS = -L${top_builddir}/src -lcap-ng
-AM_CFLAGS = -W -Wall -Wshadow -Wformat -Wundef -D_GNU_SOURCE
+AM_CPPFLAGS = -I${top_srcdir} -I${top_srcdir}/src
+LDADD = ${top_builddir}/src/libcap-ng.la
+AM_CFLAGS = -W -Wall -Wshadow ${WFLAGS} -Wundef -D_GNU_SOURCE
 bin_PROGRAMS = pscap netcap filecap captest
 man_MANS = pscap.8 netcap.8 filecap.8 captest.8
 

@@ -1,6 +1,6 @@
 /*
  * netcap.c - A program that lists network apps with capabilities
- * Copyright (c) 2009-10 Red Hat Inc., Durham, North Carolina.
+ * Copyright (c) 2009-10,2012,2020 Red Hat Inc.
  * All Rights Reserved.
  *
  * This software may be freely redistributed and/or modified under the
@@ -15,7 +15,8 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; see the file COPYING. If not, write to the
- * Free Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor
+ * Boston, MA 02110-1335, USA.
  *
  * Authors:
  *   Steve Grubb <sgrubb@redhat.com>
@@ -59,7 +60,8 @@ static int collect_process_info(void)
 		int pid, ppid;
 		capng_results_t caps;
 		char buf[100];
-		char *tmp, cmd[16], state, *text, *bounds;
+		char *tmp, cmd[16], state;
+		char *text = NULL, *bounds = NULL, *ambient = NULL;
 		int fd, len, euid = -1;
 
 		// Skip non-process dir entries
@@ -94,18 +96,28 @@ static int collect_process_info(void)
 			continue;
 
 		// now get the capabilities
-		capng_clear(CAPNG_SELECT_BOTH);
+		capng_clear(CAPNG_SELECT_ALL);
 		capng_setpid(pid);
 		if (capng_get_caps_process())
 			continue;
 		caps = capng_have_capabilities(CAPNG_SELECT_CAPS);
 		if (caps <= CAPNG_NONE)
 			continue;
-		if (caps == CAPNG_FULL)
+		if (caps == CAPNG_FULL) {
 			text = strdup("full");
-		else
+			if (!text) {
+				fprintf(stderr, "Out of memory\n");
+				continue;
+			}
+		} else {
 			text = capng_print_caps_text(CAPNG_PRINT_BUFFER,
 					CAPNG_PERMITTED);
+			if (text == NULL) {
+				fprintf(stderr, "Out of memory doing pid %d\n",
+					pid);
+				continue;
+			}
+		}
 
 		// Get the effective uid
 		snprintf(buf, 32, "/proc/%d/status", pid);
@@ -130,15 +142,29 @@ static int collect_process_info(void)
 			fclose(sf);
 		}
 
+		caps = capng_have_capabilities(CAPNG_SELECT_AMBIENT);
+		if (caps > CAPNG_NONE)
+			ambient = strdup("@");
+		else
+			ambient = strdup("");
+		if (!ambient) {
+			fprintf(stderr, "Out of memory\n");
+			free(text);
+			continue;
+		}
+
 		// Now record the bounding set information
-		if (caps == CAPNG_PARTIAL) {
-			caps = capng_have_capabilities(CAPNG_SELECT_BOUNDS);
-			if (caps == CAPNG_FULL)
-				bounds = strdup("+");
-			else
-				bounds = strdup("");
-		} else
+		caps = capng_have_capabilities(CAPNG_SELECT_BOUNDS);
+		if (caps > CAPNG_NONE)
+			bounds = strdup("+");
+		else
 			bounds = strdup("");
+		if (!bounds) {
+			fprintf(stderr, "Out of memory\n");
+			free(text);
+			free(ambient);
+			continue;
+		}
 
 		// Now lets get the inodes each process has open
 		snprintf(buf, 32, "/proc/%d/fd", pid);
@@ -146,7 +172,8 @@ static int collect_process_info(void)
 		if (f == NULL) {
 			if (errno == EACCES) {
 				if (perm_warn == 0) {
-					printf("You may need to be root to "
+					fprintf(stderr,
+						"You may need to be root to "
 						"get a full report\n");
 					perm_warn = 1;
 				}
@@ -155,6 +182,7 @@ static int collect_process_info(void)
 					strerror(errno));
 			free(text);
 			free(bounds);
+			free(ambient);
 			continue;
 		}
 		// For each file in the fd dir...
@@ -170,7 +198,7 @@ static int collect_process_info(void)
 			if ((llen = readlink(ln, line, sizeof(line)-1)) < 0)
 				continue;
 			line[llen] = 0;
-			
+
 			// Only look at the socket entries
 			if (memcmp(line, "socket:", 7) == 0) {
 				// Type 1 sockets
@@ -198,26 +226,36 @@ static int collect_process_info(void)
 			node.inode = inode;
 			node.capabilities = strdup(text);
 			node.bounds = strdup(bounds);
-			// We make one entry for each socket inode
-			list_append(&l, &node);
+			node.ambient = strdup(ambient);
+			if (node.cmd && node.capabilities && node.bounds &&
+			    node.ambient)
+				// We make one entry for each socket inode
+				list_append(&l, &node);
+			else {
+				free(node.cmd);
+				free(node.capabilities);
+				free(node.bounds);
+				free(node.ambient);
+			}
 		}
 		closedir(f);
 		free(text);
 		free(bounds);
+		free(ambient);
 	}
 	closedir(d);
 	return 0;
 }
 
-static void report_finding(int port, const char *type, const char *ifc)
+static void report_finding(unsigned int port, const char *type, const char *ifc)
 {
 	struct passwd *p;
 	lnode *n = list_get_cur(&l);
-		
+
 	// And print out anything with capabilities
 	if (header == 0) {
-		printf("%-5s %-5s %-10s %-16s %-4s %-6s %s\n",
-			"ppid", "pid", "acct", "command", "type", "port", 
+		printf("%-5s %-5s %-10s %-16s %-8s %-6s %s\n",
+			"ppid", "pid", "acct", "command", "type", "port",
 			"capabilities");
 			header = 1;
 	}
@@ -237,12 +275,12 @@ static void report_finding(int port, const char *type, const char *ifc)
 		printf("%-5d %-5d %-10s", n->ppid, n->pid, tacct);
 	} else
 		printf("%-5d %-5d %-10d", n->ppid, n->pid, last_uid);
-	printf(" %-16s %-4s", n->cmd, type);
+	printf(" %-16s %-8s", n->cmd, type);
 	if (ifc)
 		printf(" %-6s", ifc);
 	else
-		printf(" %-6d", port);
-	printf(" %s %s\n", n->capabilities, n->bounds);
+		printf(" %-6u", port);
+	printf(" %s %s%s\n", n->capabilities, n->ambient, n->bounds);
 }
 
 static void read_tcp(const char *proc, const char *type)
@@ -251,7 +289,8 @@ static void read_tcp(const char *proc, const char *type)
 	FILE *f;
 	char buf[256];
 	unsigned long rxq, txq, time_len, retr, inode;
-	int local_port, rem_port, d, state, timer_run, uid, timeout;
+	unsigned int local_port, rem_port, state, timer_run;
+	int d, uid, timeout;
 	char rem_addr[128], local_addr[128], more[512];
 
 	f = fopen(proc, "rte");
@@ -269,7 +308,7 @@ static void read_tcp(const char *proc, const char *type)
 		}
 		more[0] = 0;
 		sscanf(buf, "%d: %64[0-9A-Fa-f]:%X %64[0-9A-Fa-f]:%X %X "
-			"%lX:%lX %X:%lX %lX %d %d %lu %512s\n",
+			"%lX:%lX %X:%lX %lX %d %d %lu %511s\n",
 			&d, local_addr, &local_port, rem_addr, &rem_port,
 			&state, &txq, &rxq, &timer_run, &time_len, &retr,
 			&uid, &timeout, &inode, more);
@@ -285,7 +324,8 @@ static void read_udp(const char *proc, const char *type)
 	FILE *f;
 	char buf[256];
 	unsigned long rxq, txq, time_len, retr, inode;
-	int local_port, rem_port, d, state, timer_run, uid, timeout;
+	unsigned int local_port, rem_port, state, timer_run;
+	int d, uid, timeout;
 	char rem_addr[128], local_addr[128], more[512];
 
 	f = fopen(proc, "rte");
@@ -303,7 +343,7 @@ static void read_udp(const char *proc, const char *type)
 		}
 		more[0] = 0;
 		sscanf(buf, "%d: %64[0-9A-Fa-f]:%X %64[0-9A-Fa-f]:%X %X "
-			"%lX:%lX %X:%lX %lX %d %d %lu %512s\n",
+			"%lX:%lX %X:%lX %lX %d %d %lu %511s\n",
 			&d, local_addr, &local_port, rem_addr, &rem_port,
 			&state, &txq, &rxq, &timer_run, &time_len, &retr,
 			&uid, &timeout, &inode, more);
@@ -319,7 +359,8 @@ static void read_raw(const char *proc, const char *type)
 	FILE *f;
 	char buf[256];
 	unsigned long rxq, txq, time_len, retr, inode;
-	int local_port, rem_port, d, state, timer_run, uid, timeout;
+	unsigned int local_port, rem_port, state, timer_run;
+	int d, uid, timeout;
 	char rem_addr[128], local_addr[128], more[512];
 
 	f = fopen(proc, "rte");
@@ -337,7 +378,7 @@ static void read_raw(const char *proc, const char *type)
 		}
 		more[0] = 0;
 		sscanf(buf, "%d: %64[0-9A-Fa-f]:%X %64[0-9A-Fa-f]:%X %X "
-			"%lX:%lX %X:%lX %lX %d %d %lu %512s\n",
+			"%lX:%lX %X:%lX %lX %d %d %lu %511s\n",
 			&d, local_addr, &local_port, rem_addr, &rem_port,
 			&state, &txq, &rxq, &timer_run, &time_len, &retr,
 			&uid, &timeout, &inode, more);
@@ -371,7 +412,7 @@ static void get_interface(unsigned int iface, char *ifc)
 	while (fgets(buf, sizeof(buf), f)) {
 		if (line == iface) {
 			char *c;
-			sscanf(buf, "%16s: %256s\n", ifc, more);
+			sscanf(buf, "%16s: %255s\n", ifc, more);
 			c = strchr(ifc, ':');
 			if (c)
 				*c = 0;
@@ -406,7 +447,7 @@ static void read_packet(void)
 			continue;
 		}
 		more[0] = 0;
-		sscanf(buf, "%lX %u %u %X %u %u %u %u %lu %256s\n",
+		sscanf(buf, "%lX %u %u %X %u %u %u %u %lu %255s\n",
 			&sk, &ref_cnt, &type, &proto, &iface,
 			&r, &rmem, &uid, &inode, more);
 		get_interface(iface, ifc);
@@ -433,6 +474,8 @@ int main(int argc, char __attribute__((unused)) *argv[])
 	// Next udp sockets...
 	read_udp("/proc/net/udp", "udp");
 	read_udp("/proc/net/udp6", "udp6");
+	read_udp("/proc/net/udplite", "udplite");
+	read_udp("/proc/net/udplite6", "udplite6");
 
 	// Next, raw sockets...
 	read_raw("/proc/net/raw", "raw");
@@ -440,6 +483,8 @@ int main(int argc, char __attribute__((unused)) *argv[])
 
 	// And last, read packet sockets
 	read_packet();
+
+	// Could also do icmp,netlink,unix
 
 	list_clear(&l);
 	return 0;
