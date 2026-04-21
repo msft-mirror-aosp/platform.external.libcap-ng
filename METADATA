@@ -13,8 +13,9 @@ third_party {
   }
   homepage: "https://github.com/stevegrubb/libcap-ng"
   identifier {
-    type: "Archive"
-    value: "https://github.com/stevegrubb/libcap-ng/archive/v0.8.5.tar.gz"
-    version: "v0.8.5"
+    type: "Git"
+    value: "https://github.com/stevegrubb/libcap-ng.git"
+    version: "f5d39702622208b3ada064d7b2eaeaf1454c9bd3"
+    closest_version: "v0.8.5"
   }
 }
