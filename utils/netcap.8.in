@@ -3,11 +3,13 @@
 netcap \- a program to review network capability posture
 .SH SYNOPSIS
 .B netcap
+.\" BEGIN_ADVANCED
 .RI [ --advanced
 .RI [ --interface " IFACE ]
 .RI [ --list-interfaces ]
 .RI [ --json ]
 .RI [ --no-color ]]
+.\" END_ADVANCED
 .SH DESCRIPTION
 \fBnetcap\fP is a program that prints out a report of process capabilities.
 By default, it runs in its historical filtered mode: if an application is
@@ -17,19 +19,24 @@ examined to see if it has an open-ended bounding set. If this is found to be
 true, a '+' symbol is added. If the process has ambient capabilities, a '@'
 symbol is added.
 
+.\" BEGIN_ADVANCED
 With \fB\-\-advanced\fP, \fBnetcap\fP switches to bind/listener inventory
 mode for the current network namespace. In this mode, reachable binds/listeners
 are reported regardless of whether the owning process has capabilities.
+.\" END_ADVANCED
 
 Some directories in the /proc file system are readonly by root. The program
 will try to access and report what it can.
+.\" BEGIN_ADVANCED
 Full output normally requires root,
 or a combination of \fBCAP_DAC_READ_SEARCH\fP (to read other processes'
 \fB/proc/<pid>/fd\fP) and \fBCAP_NET_ADMIN\fP (for
 \fBNETLINK_SOCK_DIAG\fP queries that cover SCTP, DCCP, and VSOCK). Without
 these permissions, the report is partial; missing sock_diag-derived protocols
 are omitted without an explicit warning.
+.\" END_ADVANCED
 
+.\" BEGIN_ADVANCED
 .SH OPTIONS
 .TP
 .B \-\-advanced
@@ -56,7 +63,9 @@ interface inventory JSON instead of text.
 Suppress colored output. By default, when stdout is a terminal, keywords are
 colorized by severity to highlight problems, cautions, and positive hardening
 state.
+.\" END_ADVANCED
 
+.\" BEGIN_ADVANCED
 .SH "ADVANCED MODE"
 Advanced mode is an attack-surface and posture inventory for the current
 network namespace. It is intended for administrators who need a structured
@@ -193,6 +202,7 @@ When \fB\-\-advanced --list\-interfaces --json\fP is used, the top-level
 object
 contains \fBschema_version\fP (integer) and \fBinterfaces\fP (array of
 interface-name strings).
+.\" END_ADVANCED
 
 .SH INTERPRETATION
 \fBnetcap\fP reports processes that are both network-facing and running with
@@ -200,6 +210,7 @@ capabilities. The capability set shown is the permitted set. A '+' annotation
 means the process has an open-ended bounding set, and an '@' annotation means
 the process has ambient capabilities.
 
+.\" BEGIN_ADVANCED
 Colorized tree output is intended to prioritize remediation quickly:
 orange highlights problems to fix, yellow highlights cautionary conditions
 to review, green highlights good hardening state, and uncolored output is
@@ -240,6 +251,7 @@ the same UID could bind and potentially intercept traffic.
 \fBraw\fP/\fBraw6\fP and \fBpacket\fP protocol nodes denote sockets with IP- or
 link-layer packet craft/sniff capabilities, significantly expanding what an
 attacker can do post-compromise.
+.\" END_ADVANCED
 
 .SH "SEE ALSO"
 .BR pscap (8),

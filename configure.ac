@@ -2,7 +2,7 @@
 dnl
 define([AC_INIT_NOTICE],
 [### Generated automatically using autoconf version] AC_ACVERSION [
-### Copyright 2009-2023 Steve Grubb <sgrubb@redhat.com>
+### Copyright 2009-2026 Steve Grubb <sgrubb@redhat.com>
 ###
 ### Permission is hereby granted, free of charge, to any person obtaining a
 ### copy of this software and associated documentation files (the "Software"),
@@ -30,7 +30,7 @@ define([AC_INIT_NOTICE],
 ])
 
 AC_REVISION($Revision: 1.3 $)dnl
-AC_INIT([libcap-ng],[0.8.5])
+AC_INIT([libcap-ng],[0.9.3])
 AC_PREREQ([2.50])dnl
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
@@ -42,12 +42,109 @@ AM_INIT_AUTOMAKE
 LT_INIT
 AC_SUBST(LIBTOOL_DEPS)
 
+PKG_PROG_PKG_CONFIG
+
 echo .
 echo Checking for programs
 
 AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_AWK
+
+LIBBPF_CFLAGS=""
+LIBBPF_LIBS=""
+LIBAUDIT_CFLAGS=""
+LIBAUDIT_LIBS=""
+CLANG=""
+BPFTOOL=""
+BPF_ARCH=""
+
+AC_CANONICAL_HOST
+AC_ARG_WITH([bpf-arch],
+AS_HELP_STRING([--with-bpf-arch=ARCH],
+[override detected BPF target arch (x86, arm64, arm, powerpc, s390, riscv, mips, loongarch)]),
+[BPF_ARCH="$withval"])
+
+AC_ARG_ENABLE([cap-audit],
+AS_HELP_STRING([--enable-cap-audit],[build cap-audit [[default=no]]]),
+[enable_cap_audit=$enableval],
+[enable_cap_audit=no])
+
+if test "x$enable_cap_audit" = "xyes"; then
+missing_cap_audit_deps=no
+AC_CHECK_PROG([CLANG],[clang],[clang],[no])
+AC_CHECK_PROG([BPFTOOL],[bpftool],[bpftool],[no])
+PKG_CHECK_MODULES([LIBBPF],[libbpf],
+[have_libbpf=yes],[have_libbpf=no])
+PKG_CHECK_MODULES([LIBAUDIT],[audit],
+[have_libaudit=yes],[have_libaudit=no])
+AC_CHECK_HEADERS([bpf/libbpf.h bpf/bpf.h linux/bpf.h libaudit.h], [],
+[missing_cap_audit_deps=yes])
+if test "$CLANG" = "no" -o "$BPFTOOL" = "no" -o \
+"x$have_libbpf" != "xyes" -o "x$have_libaudit" != "xyes" -o \
+"x$missing_cap_audit_deps" = "xyes"; then
+AC_MSG_ERROR([cap-audit requires clang, bpftool, libbpf, and libaudit])
+fi
+fi
+
+if test "x$BPF_ARCH" = "x"; then
+case "$host_cpu" in
+x86_64|i?86)
+BPF_ARCH=x86
+;;
+aarch64|arm64)
+BPF_ARCH=arm64
+;;
+arm*)
+BPF_ARCH=arm
+;;
+ppc64le|ppc64|powerpc*)
+BPF_ARCH=powerpc
+;;
+s390x|s390)
+BPF_ARCH=s390
+;;
+riscv64|riscv32|riscv*)
+BPF_ARCH=riscv
+;;
+mips64|mips64el|mips|mipsel)
+BPF_ARCH=mips
+;;
+loongarch64)
+BPF_ARCH=loongarch
+;;
+*)
+BPF_ARCH=x86
+;;
+esac
+fi
+
+if test "x$BPF_ARCH" = "x"; then
+AC_MSG_ERROR([failed to determine BPF target arch; use --with-bpf-arch])
+fi
+
+AC_MSG_CHECKING(enable-deprecated)
+AC_ARG_ENABLE([deprecated],
+AS_HELP_STRING([--enable-deprecated],
+[enable deprecated utilities such as captest [[default=no]]]),
+[enable_deprecated=$enableval],
+[enable_deprecated=no])
+if test x$enable_deprecated = xno ; then
+	AC_MSG_RESULT(no)
+else
+	AC_MSG_RESULT(yes)
+fi
+
+AC_SUBST(BPF_ARCH)
+AC_SUBST(CLANG)
+AC_SUBST(BPFTOOL)
+AC_SUBST(LIBBPF_CFLAGS)
+AC_SUBST(LIBBPF_LIBS)
+AC_SUBST(LIBAUDIT_CFLAGS)
+AC_SUBST(LIBAUDIT_LIBS)
+
+AM_CONDITIONAL([BUILD_CAP_AUDIT], [test "x$enable_cap_audit" = "xyes"])
+AM_CONDITIONAL([BUILD_DEPRECATED], [test "x$enable_deprecated" = "xyes"])
 
 echo .
 echo Checking for header files
@@ -56,6 +153,9 @@ AC_CHECK_HEADERS(sys/xattr.h, [], [
 	AC_CHECK_HEADERS(attr/xattr.h, [], [AC_MSG_WARN(attr/xattr.h not found, disabling file system capabilities.)])
 	])
 AC_CHECK_HEADERS(linux/securebits.h, [], [])
+AC_CHECK_HEADERS(linux/inet_diag.h linux/netlink.h linux/sock_diag.h
+	linux/vm_sockets.h, [], [])
+AC_CHECK_HEADERS(linux/vm_sockets_diag.h, [], [])
 AC_CHECK_HEADERS(pthread.h,
 	[AC_SEARCH_LIBS(pthread_atfork, pthread)],
 	[AC_MSG_WARN(pthread.h not found, disabling pthread_atfork.)])
@@ -63,41 +163,44 @@ AC_CHECK_HEADERS(sys/vfs.h, [
 	AC_CHECK_HEADERS(linux/magic.h, [], [AC_MSG_WARN(linux/magic.h is required in order to verify procfs.)])
 	], [AC_MSG_WARN(sys/vfs.h is required in order to verify procfs.)])
 
+build_netcap_advanced=yes
+netcap_advanced_missing=""
+for netcap_hdr in \
+	linux/inet_diag.h:$ac_cv_header_linux_inet_diag_h \
+	linux/netlink.h:$ac_cv_header_linux_netlink_h \
+	linux/sock_diag.h:$ac_cv_header_linux_sock_diag_h \
+	linux/vm_sockets.h:$ac_cv_header_linux_vm_sockets_h; do
+	netcap_name=${netcap_hdr%%:*}
+	netcap_have=${netcap_hdr#*:}
+	AS_IF([test "x$netcap_have" != xyes], [
+		build_netcap_advanced=no
+		AS_IF([test "x$netcap_advanced_missing" = x], [
+			netcap_advanced_missing="$netcap_name"
+		], [
+			netcap_advanced_missing="$netcap_advanced_missing, $netcap_name"
+		])
+	])
+done
+
+AS_IF([test "x$build_netcap_advanced" = xyes], [
+	AC_DEFINE([HAVE_NETCAP_ADVANCED], [1],
+		[Define to 1 if netcap advanced mode can be built.])
+	netcap_advanced_status="enabled"
+	AC_MSG_NOTICE([netcap advanced mode enabled])
+], [
+	netcap_advanced_status="disabled (missing headers: $netcap_advanced_missing)"
+	AC_MSG_WARN([netcap advanced mode disabled; missing headers: $netcap_advanced_missing])
+])
+AC_SUBST([NETCAP_ADVANCED_ENABLED], [$build_netcap_advanced])
+AC_SUBST([NETCAP_ADVANCED_STATUS], [$netcap_advanced_status])
+AM_CONDITIONAL([BUILD_NETCAP_ADVANCED],
+	[test "x$build_netcap_advanced" = xyes])
+
 AC_ARG_WITH([capability_header],
         [AS_HELP_STRING([--with-capability_header=path : path to capability.h])],
         [CAPABILITY_HEADER=$withval],
         [CAPABILITY_HEADER=/usr/include/linux/capability.h])
 AC_SUBST(CAPABILITY_HEADER)
-
-ALLWARNS=""
-ALLDEBUG="-g"
-OPT="-O"
-if test x"$GCC" = x"yes"; then
-  OPT="-O2 -pipe"
-  case "$target" in
-    *linux*)
-             ALLWARNS="-W -Wall -Wundef -Wpointer-arith -Wcast-align \
--Wwrite-strings -Waggregate-return -Wstrict-prototypes \
--Wmissing-prototypes -Wmissing-declarations -Wredundant-decls \
--Wnested-externs -Winline -Wfloat-equal -Wchar-subscripts"
-             ;;
-    esac
-fi
-
-ALLDEBUG="-g"
-AC_ARG_WITH(debug,
-[  --with-debug            turn on debugging [[default=no]]],
-[
-if test "x${withval}" = xyes; then
-        DEBUG="$ALLDEBUG"
-        OPT="-O"
-        AM_CONDITIONAL(DEBUG, true)
-else
-        DEBUG="-DNDEBUG"
-        AM_CONDITIONAL(DEBUG, false)
-fi
-],
-[ DEBUG="-DNDEBUG"; AM_CONDITIONAL(DEBUG, false) ])
 
 AC_MSG_CHECKING(__attr_dealloc_free support)
 AC_COMPILE_IFELSE(
@@ -192,11 +295,21 @@ else
 fi
 AM_CONDITIONAL(USE_PYTHON3, test ${use_python3} = "yes")
 
-AC_CONFIG_FILES([Makefile src/Makefile src/libcap-ng.pc src/test/Makefile 
-	bindings/Makefile
-	bindings/python3/Makefile bindings/src/Makefile 
-	bindings/python3/test/Makefile utils/Makefile
-	m4/Makefile docs/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/libcap-ng.pc src/test/Makefile
+bindings/Makefile
+bindings/python3/Makefile bindings/src/Makefile
+bindings/python3/test/Makefile bindings/test/Makefile utils/Makefile
+utils/cap-audit/Makefile m4/Makefile docs/Makefile])
+AC_CONFIG_COMMANDS([utils/netcap.8], [
+	if test "x$NETCAP_ADVANCED_ENABLED" = xyes; then
+		sed '/^.\\" BEGIN_ADVANCED$/d; /^.\\" END_ADVANCED$/d' \
+			"$srcdir/utils/netcap.8.in" > utils/netcap.8
+	else
+		sed '/^.\\" BEGIN_ADVANCED$/,/^.\\" END_ADVANCED$/d' \
+			"$srcdir/utils/netcap.8.in" > utils/netcap.8
+	fi
+], [NETCAP_ADVANCED_ENABLED="$NETCAP_ADVANCED_ENABLED"
+	srcdir="$srcdir"])
 AC_OUTPUT
 
 echo .
@@ -205,9 +318,10 @@ echo "
   libcap-ng Version:      $VERSION
   Target:                 $target
   Installation prefix:    $prefix
-  PYTHON_PREFIX:          $PYTHON_PREFIX
+  Build Kernel:           `uname -r`
   Compiler:               $CC
   Compiler flags:
 `echo $CFLAGS | fmt -w 50 | sed 's,^,                          ,'`
   __attr_dealloc_free support:  $DEALLOC
-"
+  netcap advanced mode:  $netcap_advanced_status
+  "
