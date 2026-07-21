@@ -2,10 +2,10 @@ libcap-ng
 =========
 
 The libcap-ng library should make programming with POSIX capabilities
-easier. The library has some utilities to help you analyse a system
+easier. The library has some utilities to help you analyze a system
 for apps that may have too much privileges.
 
-The included utilities are designed to let admins and developers spot apps from various ways that may be running with too much privilege. For example, any investigation should start with network facing apps since they would be prime targets for intrusion. The netcap program will check all running apps that have listening socket and display the results. Sample output from netcap:
+The included utilities are designed to let admins and developers spot apps from various ways that may be running with too much privilege. For example, any investigation should start with network facing apps since they would be prime targets for intrusion. The **netcap** program will check all running apps that have listening socket and display the results. Sample output from netcap:
 
 ```
 ppid  pid   acct       command          type port  capabilities
@@ -20,16 +20,18 @@ ppid  pid   acct       command          type port  capabilities
 1     2365  root       cupsd            udp  631   full
 ```
 After checking the networking apps, you should check all running apps with
-pscap. If you are a developer and have to give your application
+**pscap**. If you are a developer and have to give your application
 CAP_DAC_OVERRIDE, you must be accessing files for which you have no permission
 to access. This typically can be resolved by having membership in the correct
 groups. Try to avoid needing CAP_DAC_OVERRIDE...you may as well be root if you
 need it.
 
-Some application developers have chosen to use file system base capabilities
+Some application developers have chosen to use file system based capabilities
 rather than be setuid root and have to drop capabilities. Libcap-ng provides
-filecap to recursively search directories and show you which ones have
+**filecap** to recursively search directories and show you which ones have
 capabilities and exactly what those are.
+
+There is a new utility, **cap-audit** which can audit a program for necessary capabilities. It is discussed in more detail below.
 
 C Examples
 ----------
@@ -80,7 +82,7 @@ capabilities, and retain capabilities across a uid change.
 
 Now, isn't that a lot simpler? Note that the last example takes about 60 lines
 of code using the older capabilities library. As of the 0.6 release, there is
-a m4 macro file to help adding libcap-ng to your autotools config system. In
+a m4 macro file to help add libcap-ng to your autotools config system. In
 configure.ac, add LIBCAP_NG_PATH. Then in Makefile.am locate the apps that
 link to libcap-ng, add $(CAPNG_LDADD) to their LDADD entries. And lastly,
 surround the optional capabilities code with #ifdef HAVE_LIBCAP_NG.
@@ -162,6 +164,8 @@ daemon.
 Building
 --------
 
+Note: As of the 0.9 release, libcap-ng is no longer being distributed from people.redhat.com/sgrubb/libcap-ng/ please adjust any scripts to watch this github page for new releases.
+
 After cloning libcap-ng, run:
 
 ```
@@ -172,7 +176,19 @@ make
 make install
 ```
 
-If you want python bindings, add that option to the configure command. There is also a spec file to use if you are on a rpm based distribution. To do that, run "make dist" instead of make in the above instructions. Then use the resulting tar file with the spec file.
+If you want python bindings, add that option to the configure command. The
+`netcap --advanced` feature also depends on newer Linux kernel headers,
+including `linux/vm_sockets.h`. When those headers are not available, such as
+on older build roots, `configure` will automatically opt out of advanced mode
+and report that in its output while still building the rest of libcap-ng. The
+cap-audit program has to be specifically enabled and defaults to not being
+built. There is also a spec file to use if you are on a rpm based
+distribution. To do that, run "make dist" instead of make in the above
+instructions. Then use the resulting tar file with the spec file.
+
+When advanced mode is available, `netcap --advanced --list-interfaces` prints
+the current network namespace interface names. Add `--json` to get a
+machine-readable list of names.
 
 NOTE: to distributions
 ----------------------
@@ -186,8 +202,168 @@ your case, just don't do the "make check" as part of the build process. This
 problem should go away as build roots eventually switch to the 5.0 or later
 kernels.
 
+cap-audit
+---------
+As of the 0.9 release of libcap-ng, there is a new utility **cap-audit**. This program can be used to determine the actual capabilities that a program needs. To do this, use it to run the application kind of the way one would use strace. Use '--' to separate the options to cap-audit from the program being audited. You need to use cap-audit as root because it places an eBPF program in the kernel to hook the capability checks to determine what was requested, was it granted, and what syscall did it originate from. When testing a daemon, pass command line options that keep it in the foreground. The following is an example checking sshd: 
+
+```
+cap-audit -- /usr/sbin/sshd -D
+[*] Capability auditor started
+[*] Tracing application: /usr/sbin/sshd (PID 30581)
+[*] Press Ctrl-C to stop
+
+^C[*] Analyzing results...
+
+======================================================================
+CAPABILITY ANALYSIS FOR: /usr/sbin/sshd (PID 30581)
+======================================================================
+
+SYSTEM CONTEXT:
+----------------------------------------------------------------------
+  Kernel version: 6.18.3-100.fc42.x86_64
+  kernel.yama.ptrace_scope: 1
+  kernel.kptr_restrict: 1
+  kernel.dmesg_restrict: 1
+  kernel.modules_disabled: 0
+  kernel.perf_event_paranoid: 2
+  kernel.unprivileged_bpf_disabled: 2
+  net.core.bpf_jit_enable: 1
+  net.core.bpf_jit_harden: 1
+  net.core.bpf_jit_kallsyms: 1
+  vm.mmap_min_addr: 65536
+  fs.protected_hardlinks: 1
+  fs.protected_symlinks: 1
+  fs.suid_dumpable: 2
+
+REQUIRED CAPABILITIES:
+----------------------------------------------------------------------
+  chown (#0)
+    Checks: 1 granted, 0 denied
+    Reason: Used by chown (syscall 92)
+
+  dac_read_search (#2)
+    Checks: 2 granted, 1 denied
+    Reason: Used by openat (syscall 257)
+
+  setgid (#6)
+    Checks: 30 granted, 2 denied
+    Reason: Used by setgroups (syscall 116)
+
+  setuid (#7)
+    Checks: 13 granted, 4 denied
+    Reason: Used by setresuid (syscall 117)
+
+  net_bind_service (#10)
+    Checks: 2 granted, 0 denied
+    Reason: Used by bind (syscall 49)
+
+  net_admin (#12)
+    Checks: 2 granted, 2 denied
+    Reason: Used by setsockopt (syscall 54)
+
+  sys_chroot (#18)
+    Checks: 1 granted, 0 denied
+    Reason: Used by chroot (syscall 161)
+
+  sys_admin (#21)
+    Checks: 597 granted, 1656 denied
+    Reason: Used by brk (syscall 12)
+
+  sys_resource (#24)
+    Checks: 3 granted, 0 denied
+    Reason: Used by write (syscall 1)
+
+  audit_write (#29)
+    Checks: 27 granted, 2 denied
+    Reason: Used by sendto (syscall 44)
+
+  mac_admin (#33)
+    Checks: 1 granted, 0 denied
+    Reason: Used by getxattr (syscall 191)
+
+CONDITIONAL CAPABILITIES:
+----------------------------------------------------------------------
+  CAP_DAC_OVERRIDE
+    Needed when fs.protected_symlinks = 1 for symlinks in world-writable directories
+    Current value: 1 (capability needed)
+
+ATTEMPTED BUT DENIED:
+----------------------------------------------------------------------
+  dac_override (#1)
+    Attempts: 2 (all denied)
+    Syscalls: readlink, faccessat2
+    Impact: Application may have reduced functionality
+
+  bpf (#39)
+    Attempts: 2 (all denied)
+    Syscalls: prctl
+    Impact: Application may have reduced functionality
+
+SUMMARY:
+----------------------------------------------------------------------
+  Total capability checks: 2349
+  Required capabilities: 11
+  Conditional capabilities: 1
+  Denied operations: 2
+
+RECOMMENDATIONS:
+----------------------------------------------------------------------
+  Programmatic solution (C with libcap-ng):
+    #include <cap-ng.h>
+    ...
+    capng_clear(CAPNG_SELECT_BOTH);
+    capng_updatev(CAPNG_ADD, CAPNG_EFFECTIVE|CAPNG_PERMITTED, CHOWN, DAC_READ_SEARCH, SETGID, SETUID, NET_BIND_SERVICE, NET_ADMIN, SYS_CHROOT, SYS_ADMIN, SYS_RESOURCE, AUDIT_WRITE, MAC_ADMIN, -1);
+    if (capng_change_id(uid, gid, CAPNG_DROP_SUPP_GRP | CAPNG_CLEAR_BOUNDING))
+	perror("capng_change_id");
+
+  For systemd service:
+    [Service]
+    User=<non-root-user>
+    Group=<non-root-group>
+    AmbientCapabilities=chown dac_read_search setgid setuid net_bind_service net_admin sys_chroot sys_admin sys_resource audit_write mac_admin
+    CapabilityBoundingSet=chown dac_read_search setgid setuid net_bind_service net_admin sys_chroot sys_admin sys_resource audit_write mac_admin
+
+  For file capabilities (via filecap):
+    filecap /path/to/binary chown dac_read_search setgid setuid net_bind_service net_admin sys_chroot sys_admin sys_resource audit_write mac_admin
+
+  For Docker/Podman:
+    docker run --user $(id -u):$(id -g) \
+      --cap-drop=ALL \
+      --cap-add=chown \
+      --cap-add=dac_read_search \
+      --cap-add=setgid \
+      --cap-add=setuid \
+      --cap-add=net_bind_service \
+      --cap-add=net_admin \
+      --cap-add=sys_chroot \
+      --cap-add=sys_admin \
+      --cap-add=sys_resource \
+      --cap-add=audit_write \
+      --cap-add=mac_admin \
+      your-image:tag
+
+  For Kubernetes:
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      capabilities:
+        drop:
+          - ALL
+        add:
+          - chown
+          - dac_read_search
+          - setgid
+          - setuid
+          - net_bind_service
+          - net_admin
+          - sys_chroot
+          - sys_admin
+          - sys_resource
+          - audit_write
+          - mac_admin
+```
+
 Reporting
 ---------
 Report any bugs in this package to:
 https://github.com/stevegrubb/libcap-ng/issue
-
